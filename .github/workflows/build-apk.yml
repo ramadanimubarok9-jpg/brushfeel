@@ -1,6 +1,8 @@
 name: Build BrushFeel APK
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -13,28 +15,49 @@ jobs:
 
       - name: Extract BrushFeel ZIP
         run: |
-          mkdir build_project
-          ZIP=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
+          set -e
+          mkdir -p build_project
+          ZIP=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
+          if [ -z "$ZIP" ]; then
+            echo "Tidak ada file .zip ditemukan di root repo!"
+            exit 1
+          fi
+          echo "Ditemukan: $ZIP"
           unzip -q "$ZIP" -d build_project
+
+          # Ambil folder project di dalamnya (kalau zip punya 1 folder pembungkus)
           INNER=$(find build_project -mindepth 1 -maxdepth 1 -type d | head -n 1)
-          cp -r "$INNER"/. ./ 
+          if [ -n "$INNER" ] && [ -f "$INNER/settings.gradle.kts" ]; then
+            cp -r "$INNER"/. ./
+          else
+            cp -r build_project/. ./
+          fi
+          rm -rf build_project
+
+          # Pastikan file project inti benar-benar ada sebelum lanjut
+          test -f settings.gradle.kts || (echo "settings.gradle.kts tidak ditemukan setelah extract!" && exit 1)
 
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '8'
+          java-version: '17'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
+      # PENTING: zip ini tidak menyertakan gradlew, jadi pakai perintah
+      # "gradle" langsung (disediakan oleh setup-gradle@v4 di atas),
+      # bukan "./gradlew" yang filenya tidak ada.
       - name: Build APK
-        run: gradle assembleDebug
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: BrushFeel-APK
+          name: brushfeel-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
