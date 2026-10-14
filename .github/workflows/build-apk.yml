@@ -19,6 +19,8 @@ jobs:
         run: |
           mkdir -p app/src/main/java/com/brushfeel/app
           mkdir -p app/src/main/res/raw
+          mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
           if [ -f scratch.wav ]; then cp scratch.wav app/src/main/res/raw/scratch.wav; fi
           cat > settings.gradle <<'EOF'
           pluginManagement {
@@ -46,8 +48,8 @@ jobs:
                   applicationId 'com.brushfeel.app'
                   minSdk 29
                   targetSdk 34
-                  versionCode 6
-                  versionName '0.6'
+                  versionCode 7
+                  versionName '0.7'
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -59,6 +61,59 @@ jobs:
               implementation 'dev.rikka.shizuku:provider:13.1.5'
           }
           EOF
+          cat > app/src/main/res/drawable/ic_bg.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path
+                  android:fillColor="#1E1B2E"
+                  android:pathData="M0,0h108v108h-108z"/>
+          </vector>
+          EOF
+          cat > app/src/main/res/drawable/ic_fg.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <group
+                  android:rotation="45"
+                  android:pivotX="54"
+                  android:pivotY="54">
+                  <path
+                      android:fillColor="#F9A8D4"
+                      android:pathData="M48,22h12v6h-12z"/>
+                  <path
+                      android:fillColor="#CBD5E1"
+                      android:pathData="M48,28h12v4h-12z"/>
+                  <path
+                      android:fillColor="#FBBF24"
+                      android:pathData="M48,32h12v36h-12z"/>
+                  <path
+                      android:fillColor="#E8C9A0"
+                      android:pathData="M48,68h12l-6,14z"/>
+                  <path
+                      android:fillColor="#374151"
+                      android:pathData="M51.6,76.4h4.8l-2.4,5.6z"/>
+              </group>
+              <path
+                  android:fillColor="#00000000"
+                  android:strokeColor="#38BDF8"
+                  android:strokeWidth="3"
+                  android:strokeLineCap="round"
+                  android:pathData="M30,84C36,79 40,89 47,84S58,79 66,84"/>
+          </vector>
+          EOF
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@drawable/ic_bg"/>
+              <foreground android:drawable="@drawable/ic_fg"/>
+          </adaptive-icon>
+          EOF
+          cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
           cat > app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
@@ -66,8 +121,10 @@ jobs:
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
               <application
                   android:label="BrushFeel"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher_round"
                   android:allowBackup="false"
-                  android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN"/>
@@ -96,11 +153,17 @@ jobs:
           import android.content.Intent;
           import android.content.SharedPreferences;
           import android.content.pm.PackageManager;
+          import android.content.res.ColorStateList;
+          import android.graphics.Typeface;
+          import android.graphics.drawable.GradientDrawable;
           import android.os.Build;
           import android.os.Bundle;
           import android.os.Handler;
           import android.os.Looper;
+          import android.view.Gravity;
+          import android.view.View;
           import android.widget.Button;
+          import android.widget.ImageView;
           import android.widget.LinearLayout;
           import android.widget.RadioButton;
           import android.widget.RadioGroup;
@@ -111,6 +174,14 @@ jobs:
           import rikka.shizuku.Shizuku;
 
           public class MainActivity extends Activity {
+              private static final int BG = 0xFF14121F;
+              private static final int CARD = 0xFF1F1C2E;
+              private static final int TEXT = 0xFFF1F5F9;
+              private static final int MUTED = 0xFF94A3B8;
+              private static final int ACCENT = 0xFF38BDF8;
+              private static final int AMBER = 0xFFFBBF24;
+              private static final int TRACK = 0xFF3B3652;
+
               private TextView msg;
               private TextView info;
               private final Handler handler = new Handler(Looper.getMainLooper());
@@ -134,12 +205,65 @@ jobs:
                   }
               };
 
-              private void slider(LinearLayout root, String label, int init, final IntConsumer onChange) {
+              private int dp(int v) {
+                  return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
+              }
+
+              private GradientDrawable shape(int color, int radiusDp) {
+                  GradientDrawable g = new GradientDrawable();
+                  g.setColor(color);
+                  g.setCornerRadius(dp(radiusDp));
+                  return g;
+              }
+
+              private TextView text(String s, int sp, int color) {
                   TextView t = new TextView(this);
-                  t.setText(label);
+                  t.setText(s);
+                  t.setTextSize(sp);
+                  t.setTextColor(color);
+                  return t;
+              }
+
+              private TextView heading(String s) {
+                  TextView t = text(s, 15, AMBER);
+                  t.setTypeface(Typeface.DEFAULT_BOLD);
+                  return t;
+              }
+
+              private LinearLayout card() {
+                  LinearLayout c = new LinearLayout(this);
+                  c.setOrientation(LinearLayout.VERTICAL);
+                  c.setPadding(dp(16), dp(14), dp(16), dp(14));
+                  c.setBackground(shape(CARD, 18));
+                  LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+                  lp.topMargin = dp(12);
+                  c.setLayoutParams(lp);
+                  return c;
+              }
+
+              private Button button(String label, int bg, int fg, boolean outline) {
+                  Button b = new Button(this);
+                  b.setText(label);
+                  b.setTextColor(fg);
+                  b.setTypeface(Typeface.DEFAULT_BOLD);
+                  GradientDrawable g = shape(outline ? 0x00000000 : bg, 14);
+                  if (outline) g.setStroke(dp(2), MUTED);
+                  b.setBackground(g);
+                  LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(52));
+                  lp.topMargin = dp(12);
+                  b.setLayoutParams(lp);
+                  return b;
+              }
+
+              private void slider(LinearLayout box, String label, int init, final IntConsumer onChange) {
+                  TextView t = text(label, 13, MUTED);
+                  t.setPadding(0, dp(10), 0, 0);
                   SeekBar s = new SeekBar(this);
                   s.setMax(100);
                   s.setProgress(init);
+                  s.setProgressTintList(ColorStateList.valueOf(ACCENT));
+                  s.setThumbTintList(ColorStateList.valueOf(ACCENT));
+                  s.setProgressBackgroundTintList(ColorStateList.valueOf(TRACK));
                   s.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                       @Override public void onProgressChanged(SeekBar sb, int p, boolean u) {
                           onChange.accept(p);
@@ -147,8 +271,8 @@ jobs:
                       @Override public void onStartTrackingTouch(SeekBar sb) { }
                       @Override public void onStopTrackingTouch(SeekBar sb) { }
                   });
-                  root.addView(t);
-                  root.addView(s);
+                  box.addView(t);
+                  box.addView(s);
               }
 
               @Override protected void onCreate(Bundle b) {
@@ -168,48 +292,61 @@ jobs:
                   SoundService.dens = dens / 100f;
                   SoundService.rpitch = rpitch / 100f;
 
-                  int pad = (int) (24 * getResources().getDisplayMetrics().density);
+                  getWindow().setStatusBarColor(BG);
+                  getWindow().setNavigationBarColor(BG);
+
                   LinearLayout root = new LinearLayout(this);
                   root.setOrientation(LinearLayout.VERTICAL);
-                  root.setPadding(pad, pad * 2, pad, pad);
+                  root.setBackgroundColor(BG);
+                  root.setPadding(dp(20), dp(24), dp(20), dp(28));
 
-                  TextView title = new TextView(this);
-                  title.setText("BrushFeel");
-                  title.setTextSize(28);
-                  msg = new TextView(this);
-                  msg.setTextSize(16);
-                  msg.setText("Siap. Ketuk MULAI SUARA.");
-                  info = new TextView(this);
-                  info.setTextSize(14);
+                  LinearLayout head = new LinearLayout(this);
+                  head.setOrientation(LinearLayout.HORIZONTAL);
+                  head.setGravity(Gravity.CENTER_VERTICAL);
+                  ImageView iv = new ImageView(this);
+                  iv.setImageResource(R.drawable.ic_fg);
+                  iv.setBackground(shape(0xFF1E1B2E, 18));
+                  iv.setLayoutParams(new LinearLayout.LayoutParams(dp(64), dp(64)));
+                  LinearLayout titles = new LinearLayout(this);
+                  titles.setOrientation(LinearLayout.VERTICAL);
+                  titles.setPadding(dp(14), 0, 0, 0);
+                  TextView title = text("BrushFeel", 26, TEXT);
+                  title.setTypeface(Typeface.DEFAULT_BOLD);
+                  titles.addView(title);
+                  titles.addView(text("Suara goresan untuk ibisPaint", 13, MUTED));
+                  head.addView(iv);
+                  head.addView(titles);
+                  root.addView(head);
 
-                  Button start = new Button(this);
-                  start.setText("MULAI SUARA");
+                  LinearLayout statusCard = card();
+                  msg = text("Siap. Ketuk MULAI SUARA.", 16, TEXT);
+                  info = text("", 13, MUTED);
+                  info.setPadding(0, dp(8), 0, 0);
+                  statusCard.addView(msg);
+                  statusCard.addView(info);
+                  root.addView(statusCard);
+
+                  Button start = button("Mulai suara", ACCENT, 0xFF0B1220, false);
                   start.setOnClickListener(v -> startSound());
-                  Button stop = new Button(this);
-                  stop.setText("BERHENTI");
+                  Button stop = button("Berhenti", 0, TEXT, true);
                   stop.setOnClickListener(v -> {
                       stopService(new Intent(this, SoundService.class));
                       msg.setText("Suara dihentikan.");
                   });
-
-                  root.addView(title);
-                  root.addView(msg);
                   root.addView(start);
                   root.addView(stop);
 
-                  slider(root, "Volume suara goresan", vol, p -> {
-                      SoundService.volume = p / 100f;
-                      sp.edit().putInt("vol", p).apply();
-                  });
-
-                  TextView typeLabel = new TextView(this);
-                  typeLabel.setText("Jenis suara");
+                  LinearLayout typeCard = card();
+                  typeCard.addView(heading("Jenis suara"));
                   RadioGroup rg = new RadioGroup(this);
                   String[] names = {"Pensil", "Pensil halus", "Kuas basah",
                       "Pensil kertas (berbutir)", "Pensil rekaman (dari klip)"};
                   for (int i = 0; i < names.length; i++) {
                       RadioButton rb = new RadioButton(this);
                       rb.setText(names[i]);
+                      rb.setTextColor(TEXT);
+                      rb.setButtonTintList(ColorStateList.valueOf(ACCENT));
+                      rb.setPadding(dp(6), dp(8), dp(6), dp(8));
                       rb.setId(100 + i);
                       rg.addView(rb);
                   }
@@ -219,38 +356,53 @@ jobs:
                       SoundService.soundType = t;
                       sp.edit().putInt("type", t).apply();
                   });
-                  root.addView(typeLabel);
-                  root.addView(rg);
+                  typeCard.addView(rg);
+                  root.addView(typeCard);
 
-                  TextView recLabel = new TextView(this);
-                  recLabel.setText("Setelan Pensil rekaman");
-                  recLabel.setTextSize(16);
-                  root.addView(recLabel);
-                  slider(root, "Nada rekaman (kiri rendah, tengah asli, kanan tinggi)", rpitch, p -> {
+                  LinearLayout volCard = card();
+                  volCard.addView(heading("Volume"));
+                  slider(volCard, "Volume suara goresan", vol, p -> {
+                      SoundService.volume = p / 100f;
+                      sp.edit().putInt("vol", p).apply();
+                  });
+                  root.addView(volCard);
+
+                  LinearLayout advCard = card();
+                  final TextView advHead = heading("Setelan lanjutan  +");
+                  final LinearLayout adv = new LinearLayout(this);
+                  adv.setOrientation(LinearLayout.VERTICAL);
+                  adv.setVisibility(View.GONE);
+                  advHead.setOnClickListener(v -> {
+                      boolean open = adv.getVisibility() == View.VISIBLE;
+                      adv.setVisibility(open ? View.GONE : View.VISIBLE);
+                      advHead.setText(open ? "Setelan lanjutan  +" : "Setelan lanjutan  -");
+                  });
+                  adv.addView(text("Pensil rekaman", 14, TEXT));
+                  slider(adv, "Nada rekaman (kiri rendah, tengah asli, kanan tinggi)", rpitch, p -> {
                       SoundService.rpitch = p / 100f;
                       sp.edit().putInt("rpitch", p).apply();
                   });
-
-                  TextView tuneLabel = new TextView(this);
-                  tuneLabel.setText("Setelan Pensil kertas");
-                  tuneLabel.setTextSize(16);
-                  root.addView(tuneLabel);
-                  slider(root, "Kekasaran (kiri halus, kanan kasar)", grit, p -> {
+                  TextView kertas = text("Pensil kertas", 14, TEXT);
+                  kertas.setPadding(0, dp(16), 0, 0);
+                  adv.addView(kertas);
+                  slider(adv, "Kekasaran (kiri halus, kanan kasar)", grit, p -> {
                       SoundService.grit = p / 100f;
                       sp.edit().putInt("grit", p).apply();
                   });
-                  slider(root, "Nada (kiri rendah, kanan tinggi)", pitch, p -> {
+                  slider(adv, "Nada (kiri rendah, kanan tinggi)", pitch, p -> {
                       SoundService.pitch = p / 100f;
                       sp.edit().putInt("pitch", p).apply();
                   });
-                  slider(root, "Kerapatan butir (kiri jarang, kanan rapat)", dens, p -> {
+                  slider(adv, "Kerapatan butir (kiri jarang, kanan rapat)", dens, p -> {
                       SoundService.dens = p / 100f;
                       sp.edit().putInt("dens", p).apply();
                   });
-
-                  root.addView(info);
+                  advCard.addView(advHead);
+                  advCard.addView(adv);
+                  root.addView(advCard);
 
                   ScrollView sv = new ScrollView(this);
+                  sv.setBackgroundColor(BG);
                   sv.addView(root);
                   setContentView(sv);
 
