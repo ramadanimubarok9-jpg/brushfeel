@@ -18,6 +18,8 @@ jobs:
       - name: Buat proyek
         run: |
           mkdir -p app/src/main/java/com/brushfeel/app
+          mkdir -p app/src/main/res/raw
+          if [ -f scratch.wav ]; then cp scratch.wav app/src/main/res/raw/scratch.wav; fi
           cat > settings.gradle <<'EOF'
           pluginManagement {
               repositories { google(); mavenCentral(); gradlePluginPortal() }
@@ -44,8 +46,8 @@ jobs:
                   applicationId 'com.brushfeel.app'
                   minSdk 29
                   targetSdk 34
-                  versionCode 4
-                  versionName '0.4'
+                  versionCode 6
+                  versionName '0.6'
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -102,8 +104,10 @@ jobs:
           import android.widget.LinearLayout;
           import android.widget.RadioButton;
           import android.widget.RadioGroup;
+          import android.widget.ScrollView;
           import android.widget.SeekBar;
           import android.widget.TextView;
+          import java.util.function.IntConsumer;
           import rikka.shizuku.Shizuku;
 
           public class MainActivity extends Activity {
@@ -122,19 +126,47 @@ jobs:
 
               private final Runnable tick = new Runnable() {
                   @Override public void run() {
-                      info.setText(SoundService.status + "\nSentuhan terbaca: " + SoundService.events);
+                      info.setText(SoundService.status
+                          + "\nSentuhan terbaca: " + SoundService.events
+                          + "\nRekaman scratch.wav: "
+                          + (SoundService.sampleOk ? "terbaca" : "belum terbaca (ketuk MULAI dulu)"));
                       handler.postDelayed(this, 500);
                   }
               };
+
+              private void slider(LinearLayout root, String label, int init, final IntConsumer onChange) {
+                  TextView t = new TextView(this);
+                  t.setText(label);
+                  SeekBar s = new SeekBar(this);
+                  s.setMax(100);
+                  s.setProgress(init);
+                  s.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                      @Override public void onProgressChanged(SeekBar sb, int p, boolean u) {
+                          onChange.accept(p);
+                      }
+                      @Override public void onStartTrackingTouch(SeekBar sb) { }
+                      @Override public void onStopTrackingTouch(SeekBar sb) { }
+                  });
+                  root.addView(t);
+                  root.addView(s);
+              }
 
               @Override protected void onCreate(Bundle b) {
                   super.onCreate(b);
                   final SharedPreferences sp = getSharedPreferences("bf", MODE_PRIVATE);
                   int vol = sp.getInt("vol", 70);
-                  int type = sp.getInt("type", 3);
-                  if (type < 0 || type > 3) type = 3;
+                  int type = sp.getInt("type", 4);
+                  if (type < 0 || type > 4) type = 4;
+                  int grit = sp.getInt("grit", 35);
+                  int pitch = sp.getInt("pitch", 30);
+                  int dens = sp.getInt("dens", 40);
+                  int rpitch = sp.getInt("rpitch", 50);
                   SoundService.volume = vol / 100f;
                   SoundService.soundType = type;
+                  SoundService.grit = grit / 100f;
+                  SoundService.pitch = pitch / 100f;
+                  SoundService.dens = dens / 100f;
+                  SoundService.rpitch = rpitch / 100f;
 
                   int pad = (int) (24 * getResources().getDisplayMetrics().density);
                   LinearLayout root = new LinearLayout(this);
@@ -160,24 +192,21 @@ jobs:
                       msg.setText("Suara dihentikan.");
                   });
 
-                  TextView volLabel = new TextView(this);
-                  volLabel.setText("Volume suara goresan");
-                  SeekBar sb = new SeekBar(this);
-                  sb.setMax(100);
-                  sb.setProgress(vol);
-                  sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                      @Override public void onProgressChanged(SeekBar s, int p, boolean u) {
-                          SoundService.volume = p / 100f;
-                          sp.edit().putInt("vol", p).apply();
-                      }
-                      @Override public void onStartTrackingTouch(SeekBar s) { }
-                      @Override public void onStopTrackingTouch(SeekBar s) { }
+                  root.addView(title);
+                  root.addView(msg);
+                  root.addView(start);
+                  root.addView(stop);
+
+                  slider(root, "Volume suara goresan", vol, p -> {
+                      SoundService.volume = p / 100f;
+                      sp.edit().putInt("vol", p).apply();
                   });
 
                   TextView typeLabel = new TextView(this);
                   typeLabel.setText("Jenis suara");
                   RadioGroup rg = new RadioGroup(this);
-                  String[] names = {"Pensil", "Pensil halus", "Kuas basah", "Pensil kertas (berbutir)"};
+                  String[] names = {"Pensil", "Pensil halus", "Kuas basah",
+                      "Pensil kertas (berbutir)", "Pensil rekaman (dari klip)"};
                   for (int i = 0; i < names.length; i++) {
                       RadioButton rb = new RadioButton(this);
                       rb.setText(names[i]);
@@ -190,17 +219,40 @@ jobs:
                       SoundService.soundType = t;
                       sp.edit().putInt("type", t).apply();
                   });
-
-                  root.addView(title);
-                  root.addView(msg);
-                  root.addView(start);
-                  root.addView(stop);
-                  root.addView(volLabel);
-                  root.addView(sb);
                   root.addView(typeLabel);
                   root.addView(rg);
+
+                  TextView recLabel = new TextView(this);
+                  recLabel.setText("Setelan Pensil rekaman");
+                  recLabel.setTextSize(16);
+                  root.addView(recLabel);
+                  slider(root, "Nada rekaman (kiri rendah, tengah asli, kanan tinggi)", rpitch, p -> {
+                      SoundService.rpitch = p / 100f;
+                      sp.edit().putInt("rpitch", p).apply();
+                  });
+
+                  TextView tuneLabel = new TextView(this);
+                  tuneLabel.setText("Setelan Pensil kertas");
+                  tuneLabel.setTextSize(16);
+                  root.addView(tuneLabel);
+                  slider(root, "Kekasaran (kiri halus, kanan kasar)", grit, p -> {
+                      SoundService.grit = p / 100f;
+                      sp.edit().putInt("grit", p).apply();
+                  });
+                  slider(root, "Nada (kiri rendah, kanan tinggi)", pitch, p -> {
+                      SoundService.pitch = p / 100f;
+                      sp.edit().putInt("pitch", p).apply();
+                  });
+                  slider(root, "Kerapatan butir (kiri jarang, kanan rapat)", dens, p -> {
+                      SoundService.dens = p / 100f;
+                      sp.edit().putInt("dens", p).apply();
+                  });
+
                   root.addView(info);
-                  setContentView(root);
+
+                  ScrollView sv = new ScrollView(this);
+                  sv.addView(root);
+                  setContentView(sv);
 
                   Shizuku.addRequestPermissionResultListener(permListener);
                   if (Build.VERSION.SDK_INT >= 33 &&
@@ -254,6 +306,8 @@ jobs:
           import android.media.AudioTrack;
           import android.os.IBinder;
           import java.io.BufferedReader;
+          import java.io.ByteArrayOutputStream;
+          import java.io.InputStream;
           import java.io.InputStreamReader;
           import java.lang.reflect.Method;
           import java.util.Random;
@@ -261,7 +315,12 @@ jobs:
 
           public class SoundService extends Service {
               public static volatile float volume = 0.7f;
-              public static volatile int soundType = 3;
+              public static volatile int soundType = 4;
+              public static volatile float grit = 0.35f;
+              public static volatile float pitch = 0.3f;
+              public static volatile float dens = 0.4f;
+              public static volatile float rpitch = 0.5f;
+              public static volatile boolean sampleOk = false;
               public static volatile String status = "Belum jalan";
               public static volatile long events = 0;
 
@@ -317,6 +376,31 @@ jobs:
                       if (p != null) p.destroy();
                   } catch (Throwable ignored) { }
                   super.onDestroy();
+              }
+
+              private float[] loadSample() {
+                  try {
+                      int id = getResources().getIdentifier("scratch", "raw", getPackageName());
+                      if (id == 0) return null;
+                      InputStream in = getResources().openRawResource(id);
+                      ByteArrayOutputStream bo = new ByteArrayOutputStream();
+                      byte[] tmp = new byte[8192];
+                      int r;
+                      while ((r = in.read(tmp)) > 0) bo.write(tmp, 0, r);
+                      in.close();
+                      byte[] d = bo.toByteArray();
+                      int n = (d.length - 44) / 2;
+                      if (n <= 0) return null;
+                      float[] f = new float[n];
+                      for (int i = 0; i < n; i++) {
+                          int lo = d[44 + 2 * i] & 0xff;
+                          int hi = d[45 + 2 * i];
+                          f[i] = ((short) ((hi << 8) | lo)) / 32768f;
+                      }
+                      return f;
+                  } catch (Throwable t) {
+                      return null;
+                  }
               }
 
               private void touchLoop() {
@@ -427,6 +511,9 @@ jobs:
                   final int sr = 44100;
                   final int chunk = 256;
                   final float phInc = (float) (2.0 * Math.PI * 200.0 / sr);
+                  final float[] smp = loadSample();
+                  final int slen = smp == null ? 0 : smp.length;
+                  sampleOk = slen > 0;
                   int minBuf = AudioTrack.getMinBufferSize(sr,
                       AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
                   AudioTrack track = new AudioTrack.Builder()
@@ -450,6 +537,7 @@ jobs:
                   float env = 0f, lp = 0f, lpA = 0f, lpB = 0f, tex = 0f;
                   float grain = 0f, bl = 0f, bm = 0f;
                   float tek = 0f, tkA = 0f, tkB = 0f, ph = 0f;
+                  double pos = 0.0;
                   int lastTek = tekCount;
                   while (running) {
                       long now = System.nanoTime();
@@ -457,10 +545,16 @@ jobs:
                       float target = moving ? level : 0f;
                       float vol = volume;
                       int type = soundType;
+                      float gr = grit;
+                      float de = dens;
+                      float la = 0.04f + 0.2f * pitch;
+                      float lnorm = 1f / (0.408f * (float) Math.sqrt(la));
+                      float rb = 0.6f + 0.8f * rpitch;
                       int tc = tekCount;
                       if (tc != lastTek) {
                           lastTek = tc;
                           tek = 1f;
+                          if (slen > 0) pos = rnd.nextDouble() * slen;
                       }
                       float atk = 0.01f;
                       float rel = 0.003f;
@@ -480,16 +574,30 @@ jobs:
                           float n = rnd.nextFloat() * 2f - 1f;
                           float r2 = rnd.nextFloat() * 2f - 1f;
                           float s;
-                          if (type == 3) {
-                              float rate = 800f + 3200f * env;
+                          if (type == 4) {
+                              if (slen > 0) {
+                                  float rt = rb * (0.9f + 0.2f * env);
+                                  int i0 = (int) pos;
+                                  int i1 = i0 + 1;
+                                  if (i1 >= slen) i1 = 0;
+                                  float fr = (float) (pos - i0);
+                                  float v = smp[i0] + (smp[i1] - smp[i0]) * fr;
+                                  pos += rt;
+                                  if (pos >= slen) pos -= slen;
+                                  s = v * env * vol * 2.0f;
+                              } else {
+                                  s = 0f;
+                              }
+                          } else if (type == 3) {
+                              float rate = 400f + 5000f * de * env;
                               if (rnd.nextFloat() < rate / sr) {
                                   grain += 0.3f + 0.7f * rnd.nextFloat();
                               }
                               grain *= 0.985f;
-                              bl += 0.12f * (n - bl);
+                              bl += la * (n - bl);
                               bm += 0.35f * (r2 - bm);
-                              float body = bl * 0.9f + bm * 0.5f;
-                              s = body * (0.15f + 0.35f * grain) * env * vol * 2.2f;
+                              float body = bl * lnorm * 0.131f + bm * (0.8f * gr);
+                              s = body * (0.25f + 0.5f * gr * grain) * env * vol * 2.6f;
                           } else if (type == 1) {
                               lp += 0.45f * (n - lp);
                               float hp = n - lp;
